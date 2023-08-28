@@ -1,0 +1,50 @@
+module DataPath (clk,PCWrite,IorD,MemWrite,MemRead,IRWrite,RR2sel,WRsel,RegWrite,ALUsrcA,PCsrc,flag_write,ALUop,ALUsrcB,WDsel,ALUctrl,L_tr,L_br,I,E,D,Inst,OPC);
+	input clk,PCWrite,IorD,MemWrite,MemRead,IRWrite,RR2sel,WRsel,RegWrite,ALUsrcA,PCsrc,flag_write,ALUop;
+	input[1:0] ALUsrcB,WDsel;
+	input[2:0] ALUctrl;
+	output L_tr,L_br,I,E,D;
+	output[2:0] OPC,Inst;
+	
+	wire Zin,Nin,Cin,Vin;
+	wire[1:0] C;
+	wire[3:0] Rnb,Rd,Rm,ReadReg2,WriteReg;
+	wire[31:0] adr,WriteDataR,ALUa,ALUb,Op2_offset,offset;
+	wire[31:0] Ain,Bin;
+	wire Zout,Nout,Cout,Vout;
+	wire[31:0] PCout,ALUreg,IRin,IRout,Aout,Bout,ALUResult,MDRout;
+	wire[31:0] PCin;
+	assign C = IRout[31:30];
+	assign Rnb = IRout[19:16];
+	assign Rd = IRout[15:12];
+	assign Rm = IRout[3:0];
+	assign Op2_offset[11:0] = IRout[11:0];
+	assign Op2_offset[31:12] = {20{IRout[11]}};
+	assign offset[25:0] = IRout[25:0];
+	assign offset[31:26] = {6{IRout[25]}};
+
+	Register_L #(32) PC(clk,PCin,PCWrite,PCout);
+	mux2to1 #(32) M1(PCout,ALUreg,IorD,adr);
+	Memory Mem(clk,MemRead,MemWrite,adr,Bout,IRin);
+	Register_L #(32) IR(clk,IRin,IRWrite,IRout);
+	Register #(32) MDR(clk,IRin,MDRout);
+	mux2to1 #(4) M2(Rd,Rm,RR2sel,ReadReg2);
+	mux2to1 #(4) M3(Rd,4'd15,WRsel,WriteReg);
+	mux3to1 #(32) M4(MDRout,PCout,ALUreg,WDsel,WriteDataR);
+	RegisterFile RF(RegWrite,clk,Rnb,ReadReg2,WriteReg,WriteDataR,Ain,Bin);
+	Register #(32) A(clk,Ain,Aout);
+	Register #(32) B(clk,Bin,Bout);
+	mux2to1 #(32) M5(PCout,Aout,ALUsrcA,ALUa);
+	mux4to1 #(32) M6(32'd1,Bout,Op2_offset,offset,ALUsrcB,ALUb);
+	ALU alu(ALUa,ALUb,ALUctrl,ALUResult,Zin,Cin,Nin,Vin);
+	Register_L #(4) ZNVC(clk,{Zin,Nin,Vin,Cin},flag_write,{Zout,Nout,Vout,Cout});
+	Register #(32) ALUout(clk,ALUResult,ALUreg);
+	mux2to1 #(32) M7(ALUResult,ALUreg,PCsrc,PCin);
+	C_detector Cdet(C,Zout,Nout,Vout,D);
+	TST_CMP_det TCdet(OPC,E);
+	
+	assign Inst = IRout[29:27];
+	assign OPC = IRout[22:20];
+	assign L_br = IRout[26];
+	assign I = IRout[23];
+	assign L_tr = IRout[20];
+endmodule
